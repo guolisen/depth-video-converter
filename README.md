@@ -43,6 +43,9 @@ FFmpeg RGB frames -> ONNX depth inference -> temporal range stabilization
 
 Depth Anything V2 produces relative depth rather than calibrated metric distance.
 
+## UI
+<img width="1060" height="751" alt="屏幕截图 2026-08-11 203607" src="https://github.com/user-attachments/assets/e09d9a78-e3d5-4a37-9a21-fd396817c9c8" />
+
 ## Result
 Depth video:
 <img width="1231" height="704" alt="屏幕截图 2026-08-11 203139" src="https://github.com/user-attachments/assets/0219c383-358a-4b97-af9a-b24c51e3065d" />
