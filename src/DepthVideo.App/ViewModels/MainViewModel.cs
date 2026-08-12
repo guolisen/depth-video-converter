@@ -1,10 +1,19 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
 using System.IO;
+using DepthVideo.App.Localization;
 using DepthVideo.Core.Models;
 using DepthVideo.Core.Services;
 
 namespace DepthVideo.App.ViewModels;
+
+public sealed class LocalizedOption<T>(T value, Func<string> displayNameFactory) : ObservableObject
+{
+    public T Value { get; } = value;
+    public string DisplayName => displayNameFactory();
+
+    public void Refresh() => OnPropertyChanged(nameof(DisplayName));
+}
 
 public sealed class MainViewModel : ObservableObject
 {
@@ -19,19 +28,58 @@ public sealed class MainViewModel : ObservableObject
     private QualityPreset _selectedQuality = QualityPreset.Balanced;
     private DepthPolarity _selectedPolarity = DepthPolarity.NearWhite;
     private VideoEncoder _selectedEncoder = VideoEncoder.Auto;
+    private LanguageOption _selectedLanguage;
     private string _outputPath = string.Empty;
-    private string _statusTitle = "请选择一个视频";
-    private string _statusDetail = "支持 MP4、MOV、MKV、AVI 和 WebM";
+    private string _statusTitle;
+    private string _statusDetail;
     private double _progressValue;
     private bool _isBusy;
     private string _speedText = string.Empty;
     private CancellationTokenSource? _cancellation;
 
+    public MainViewModel()
+    {
+        _selectedLanguage = LanguageOptions.First(language => language.Code == LocalizationService.CurrentLanguage);
+        _statusTitle = LocalizationService.Text("ChooseVideoStatus");
+        _statusDetail = LocalizationService.Text("SupportedFormatsSentence");
+
+        QualityOptions =
+        [
+            new(QualityPreset.Fast, () => LocalizationService.Text("Fast")),
+            new(QualityPreset.Balanced, () => LocalizationService.Text("Balanced")),
+            new(QualityPreset.Fine, () => LocalizationService.Text("Fine")),
+        ];
+        PolarityOptions =
+        [
+            new(DepthPolarity.NearWhite, () => LocalizationService.Text("NearWhite")),
+            new(DepthPolarity.NearBlack, () => LocalizationService.Text("NearBlack")),
+        ];
+        EncoderOptions =
+        [
+            new(VideoEncoder.Auto, () => LocalizationService.Text("AutoEncoder")),
+            new(VideoEncoder.NvidiaH264, () => LocalizationService.Text("NvidiaEncoder")),
+            new(VideoEncoder.SoftwareH264, () => LocalizationService.Text("SoftwareEncoder")),
+        ];
+    }
+
     public ObservableCollection<HardwareDevice> Devices { get; } = [];
     public ObservableCollection<string> Logs { get; } = [];
-    public IReadOnlyList<QualityPreset> QualityOptions { get; } = Enum.GetValues<QualityPreset>();
-    public IReadOnlyList<DepthPolarity> PolarityOptions { get; } = Enum.GetValues<DepthPolarity>();
-    public IReadOnlyList<VideoEncoder> EncoderOptions { get; } = Enum.GetValues<VideoEncoder>();
+    public ObservableCollection<LocalizedOption<HardwareDevice>> DeviceOptions { get; } = [];
+    public IReadOnlyList<LocalizedOption<QualityPreset>> QualityOptions { get; }
+    public IReadOnlyList<LocalizedOption<DepthPolarity>> PolarityOptions { get; }
+    public IReadOnlyList<LocalizedOption<VideoEncoder>> EncoderOptions { get; }
+    public IReadOnlyList<LanguageOption> LanguageOptions { get; } = LocalizationService.Languages;
+
+    public LanguageOption SelectedLanguage
+    {
+        get => _selectedLanguage;
+        set
+        {
+            if (value is null || !SetProperty(ref _selectedLanguage, value)) return;
+            LocalizationService.SetLanguage(value.Code);
+            RefreshLocalizedContent();
+        }
+    }
 
     public VideoMetadata? Video
     {
@@ -49,9 +97,11 @@ public sealed class MainViewModel : ObservableObject
     }
 
     public bool HasVideo => Video is not null;
-    public string InputName => Video is null ? "拖入视频或点击选择" : Path.GetFileName(Video.FilePath);
+    public string InputName => Video is null
+        ? LocalizationService.Text("DropOrChoose")
+        : Path.GetFileName(Video.FilePath);
     public string InputDetails => Video is null
-        ? "视频只在本机处理，不会上传"
+        ? LocalizationService.Text("LocalOnly")
         : $"{Video.Width} × {Video.Height} · {Video.FramesPerSecond:0.###} FPS · {Video.Duration:hh\\:mm\\:ss} · {FormatBytes(Video.FileSize)}";
 
     public HardwareDevice? SelectedDevice
@@ -67,7 +117,12 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    public string DeviceStatus => SelectedDevice is null ? "正在检测硬件" : $"{SelectedDevice.Name} · {SelectedDevice.Detail}";
+    public string DeviceStatus => SelectedDevice is null
+        ? LocalizationService.Text("DetectingHardware")
+        : SelectedDevice.Backend == ComputeBackend.Cpu
+            ? $"{LocalizationService.Text("CpuCompatibility")} · {LocalizationService.Text("SlowSpeed")}" 
+            : $"{SelectedDevice.Name} · DirectML{(SelectedDevice.IsHighPerformance ? $" · {LocalizationService.Text("HighPerformanceGpu")}" : string.Empty)}";
+
     public QualityPreset SelectedQuality { get => _selectedQuality; set => SetProperty(ref _selectedQuality, value); }
     public DepthPolarity SelectedPolarity { get => _selectedPolarity; set => SetProperty(ref _selectedPolarity, value); }
     public VideoEncoder SelectedEncoder { get => _selectedEncoder; set => SetProperty(ref _selectedEncoder, value); }
@@ -100,10 +155,18 @@ public sealed class MainViewModel : ObservableObject
     public Task InitializeAsync()
     {
         Devices.Clear();
-        foreach (var device in _hardwareDetector.Detect()) Devices.Add(device);
+        DeviceOptions.Clear();
+        foreach (var device in _hardwareDetector.Detect())
+        {
+            Devices.Add(device);
+            DeviceOptions.Add(new LocalizedOption<HardwareDevice>(device, () => GetDeviceDisplayName(device)));
+        }
         SelectedDevice = Devices.FirstOrDefault(device => device.IsHighPerformance) ?? Devices.FirstOrDefault();
-        AddLog($"FFmpeg：{_ffmpegPath ?? "未找到"}");
-        AddLog($"GPU 模型：{(File.Exists(_gpuModelPath) ? "已就绪" : "缺失")}；CPU 模型：{(File.Exists(_cpuModelPath) ? "已就绪" : "缺失")}");
+        AddLog(LocalizationService.Format("FfmpegLog", _ffmpegPath ?? LocalizationService.Text("NotFound")));
+        AddLog(LocalizationService.Format(
+            "ModelsLog",
+            File.Exists(_gpuModelPath) ? LocalizationService.Text("Ready") : LocalizationService.Text("Missing"),
+            File.Exists(_cpuModelPath) ? LocalizationService.Text("Ready") : LocalizationService.Text("Missing")));
         return Task.CompletedTask;
     }
 
@@ -112,22 +175,22 @@ public sealed class MainViewModel : ObservableObject
         if (IsBusy) return;
         if (_ffprobePath is null)
         {
-            SetError("没有找到 FFprobe，请安装 FFmpeg 或将其放入程序 tools 目录。");
+            SetError(LocalizationService.Text("FfprobeMissing"));
             return;
         }
 
         try
         {
-            StatusTitle = "正在读取视频";
+            StatusTitle = LocalizationService.Text("ReadingVideo");
             StatusDetail = Path.GetFileName(filePath);
             Video = await new FfprobeService(_ffprobePath).ProbeAsync(filePath);
             OutputPath = Path.Combine(
                 Path.GetDirectoryName(filePath) ?? Environment.CurrentDirectory,
-                $"{Path.GetFileNameWithoutExtension(filePath)}_黑白深度.mp4");
+                $"{Path.GetFileNameWithoutExtension(filePath)}_{LocalizationService.Text("OutputSuffix")}.mp4");
             ProgressValue = 0;
-            StatusTitle = "视频已就绪";
-            StatusDetail = "确认设置后开始转换";
-            AddLog($"已载入 {InputName}，{InputDetails}");
+            StatusTitle = LocalizationService.Text("VideoReady");
+            StatusDetail = LocalizationService.Text("ConfirmSettings");
+            AddLog(LocalizationService.Format("LoadedVideoLog", InputName, InputDetails));
         }
         catch (Exception exception)
         {
@@ -139,15 +202,24 @@ public sealed class MainViewModel : ObservableObject
     public async Task StartAsync()
     {
         if (!CanStart || Video is null || SelectedDevice is null) return;
-        if (_ffmpegPath is null) { SetError("没有找到 FFmpeg。"); return; }
+        if (_ffmpegPath is null)
+        {
+            SetError(LocalizationService.Text("FfmpegMissing"));
+            return;
+        }
+
         var modelPath = SelectedDevice.Backend == ComputeBackend.Cpu ? _cpuModelPath : _gpuModelPath;
-        if (!File.Exists(modelPath)) { SetError("当前设备需要的深度模型文件缺失。"); return; }
+        if (!File.Exists(modelPath))
+        {
+            SetError(LocalizationService.Text("ModelMissing"));
+            return;
+        }
 
         _cancellation = new CancellationTokenSource();
         IsBusy = true;
         ProgressValue = 0;
         Logs.Clear();
-        AddLog("转换任务开始");
+        AddLog(LocalizationService.Text("ConversionStartedLog"));
         try
         {
             var settings = new ConversionSettings(
@@ -155,16 +227,16 @@ public sealed class MainViewModel : ObservableObject
                 SelectedQuality, SelectedPolarity, SelectedEncoder);
             var converter = new FfmpegConversionService(_ffmpegPath);
             await converter.ConvertAsync(Video, settings, new Progress<ConversionProgress>(UpdateProgress), AddLog, _cancellation.Token);
-            StatusTitle = "转换完成";
+            StatusTitle = LocalizationService.Text("ConversionComplete");
             StatusDetail = Path.GetFileName(OutputPath);
-            SpeedText = "文件已保存";
+            SpeedText = LocalizationService.Text("FileSaved");
         }
         catch (OperationCanceledException)
         {
-            StatusTitle = "转换已停止";
-            StatusDetail = "没有修改原视频";
+            StatusTitle = LocalizationService.Text("ConversionStopped");
+            StatusDetail = LocalizationService.Text("OriginalUnchanged");
             SpeedText = string.Empty;
-            AddLog("用户取消了转换");
+            AddLog(LocalizationService.Text("CancelledLog"));
         }
         catch (Exception exception)
         {
@@ -193,24 +265,62 @@ public sealed class MainViewModel : ObservableObject
     private void UpdateProgress(ConversionProgress progress)
     {
         ProgressValue = progress.Percent;
-        StatusTitle = progress.Message;
+        StatusTitle = progress.Stage switch
+        {
+            ConversionStage.LoadingModel => LocalizationService.Text("LoadingModel"),
+            ConversionStage.Decoding or ConversionStage.Inferring or ConversionStage.Encoding =>
+                LocalizationService.Format("GeneratingDepthFrames", progress.ProcessedFrames, progress.TotalFrames),
+            ConversionStage.Finalizing => LocalizationService.Text("MergingAudio"),
+            ConversionStage.Completed => LocalizationService.Text("ConversionComplete"),
+            _ => LocalizationService.Text("ProcessingComplete"),
+        };
         StatusDetail = progress.Stage switch
         {
-            ConversionStage.LoadingModel => $"正在初始化 {SelectedDevice?.Name}",
-            ConversionStage.Finalizing => "正在合并音频并完成文件",
-            ConversionStage.Completed => "处理完成",
-            _ => $"{progress.ProcessedFrames:N0} / {progress.TotalFrames:N0} 帧",
+            ConversionStage.LoadingModel => LocalizationService.Format("InitializingDevice", SelectedDevice?.Name ?? string.Empty),
+            ConversionStage.Finalizing => LocalizationService.Text("MergingAudio"),
+            ConversionStage.Completed => LocalizationService.Text("ProcessingComplete"),
+            _ => LocalizationService.Format("FramesProgress", progress.ProcessedFrames, progress.TotalFrames),
         };
         SpeedText = progress.FramesPerSecond > 0
-            ? $"{progress.FramesPerSecond:0.0} FPS · 剩余 {FormatRemaining(progress.Remaining)}"
+            ? LocalizationService.Format("SpeedRemaining", progress.FramesPerSecond, FormatRemaining(progress.Remaining))
             : string.Empty;
+    }
+
+    private void RefreshLocalizedContent()
+    {
+        OnPropertyChanged(nameof(InputName));
+        OnPropertyChanged(nameof(InputDetails));
+        OnPropertyChanged(nameof(DeviceStatus));
+
+        foreach (var option in DeviceOptions) option.Refresh();
+        foreach (var option in QualityOptions) option.Refresh();
+        foreach (var option in PolarityOptions) option.Refresh();
+        foreach (var option in EncoderOptions) option.Refresh();
+
+        if (!IsBusy)
+        {
+            StatusTitle = Video is null
+                ? LocalizationService.Text("ChooseVideoStatus")
+                : LocalizationService.Text("VideoReady");
+            StatusDetail = Video is null
+                ? LocalizationService.Text("SupportedFormatsSentence")
+                : LocalizationService.Text("ConfirmSettings");
+        }
     }
 
     private void SetError(string message)
     {
-        StatusTitle = "无法完成操作";
+        StatusTitle = LocalizationService.Text("OperationFailed");
         StatusDetail = message;
         SpeedText = string.Empty;
+    }
+
+    private static string GetDeviceDisplayName(HardwareDevice device)
+    {
+        if (device.Backend == ComputeBackend.Cpu) return LocalizationService.Text("CpuCompatibility");
+        return device.IsHighPerformance
+            ? $"{device.Name}  {LocalizationService.Text("Recommended")}"
+            : device.Name;
     }
 
     private void AddLog(string message)
@@ -227,11 +337,17 @@ public sealed class MainViewModel : ObservableObject
         string[] units = ["B", "KB", "MB", "GB"];
         var value = (double)bytes;
         var unit = 0;
-        while (value >= 1024 && unit < units.Length - 1) { value /= 1024; unit++; }
+        while (value >= 1024 && unit < units.Length - 1)
+        {
+            value /= 1024;
+            unit++;
+        }
         return $"{value:0.#} {units[unit]}";
     }
 
     private static string FormatRemaining(TimeSpan? remaining) => remaining is null
-        ? "计算中"
-        : remaining.Value.TotalHours >= 1 ? remaining.Value.ToString(@"hh\:mm\:ss") : remaining.Value.ToString(@"mm\:ss");
+        ? LocalizationService.Text("Calculating")
+        : remaining.Value.TotalHours >= 1
+            ? remaining.Value.ToString(@"hh\:mm\:ss")
+            : remaining.Value.ToString(@"mm\:ss");
 }

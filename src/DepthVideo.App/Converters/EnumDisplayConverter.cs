@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Windows.Data;
+using DepthVideo.App.Localization;
 using DepthVideo.Core.Models;
 
 namespace DepthVideo.App.Converters;
@@ -8,14 +9,17 @@ public sealed class EnumDisplayConverter : IValueConverter
 {
     public object Convert(object value, Type targetType, object parameter, CultureInfo culture) => value switch
     {
-        QualityPreset.Fast => "快速",
-        QualityPreset.Balanced => "标准",
-        QualityPreset.Fine => "高质量",
-        DepthPolarity.NearWhite => "近白远黑",
-        DepthPolarity.NearBlack => "近黑远白",
-        VideoEncoder.Auto => "自动（优先 NVIDIA）",
-        VideoEncoder.NvidiaH264 => "NVIDIA H.264",
-        VideoEncoder.SoftwareH264 => "软件 H.264",
+        QualityPreset.Fast => LocalizationService.Text("Fast"),
+        QualityPreset.Balanced => LocalizationService.Text("Balanced"),
+        QualityPreset.Fine => LocalizationService.Text("Fine"),
+        DepthPolarity.NearWhite => LocalizationService.Text("NearWhite"),
+        DepthPolarity.NearBlack => LocalizationService.Text("NearBlack"),
+        VideoEncoder.Auto => LocalizationService.Text("AutoEncoder"),
+        VideoEncoder.NvidiaH264 => LocalizationService.Text("NvidiaEncoder"),
+        VideoEncoder.SoftwareH264 => LocalizationService.Text("SoftwareEncoder"),
+        HardwareDevice device when device.Backend == ComputeBackend.Cpu => LocalizationService.Text("CpuCompatibility"),
+        HardwareDevice device when device.IsHighPerformance => $"{device.Name}  {LocalizationService.Text("Recommended")}",
+        HardwareDevice device => device.Name,
         _ => value?.ToString() ?? string.Empty,
     };
 

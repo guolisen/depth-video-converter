@@ -18,7 +18,7 @@ public sealed class HardwareDetector
                 {
                     var name = item["Name"]?.ToString() ?? $"GPU {index}";
                     var isNvidia = name.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase);
-                    var detail = isNvidia ? "DirectML · 高性能 GPU" : "DirectML";
+                    var detail = "DirectML";
                     devices.Add(new HardwareDevice($"dml-{index}", name, ComputeBackend.DirectMl, index, isNvidia, detail));
                     index++;
                 }
@@ -29,7 +29,7 @@ public sealed class HardwareDetector
             }
         }
 
-        devices.Add(new HardwareDevice("cpu", "CPU 兼容模式", ComputeBackend.Cpu, 0, false, "速度较慢"));
+        devices.Add(new HardwareDevice("cpu", "CPU", ComputeBackend.Cpu, 0, false, "CPU"));
         return devices.OrderByDescending(device => device.IsHighPerformance)
             .ThenBy(device => device.Backend == ComputeBackend.Cpu)
             .ToArray();

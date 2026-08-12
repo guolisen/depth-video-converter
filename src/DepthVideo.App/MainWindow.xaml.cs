@@ -1,4 +1,5 @@
 using System.Windows;
+using DepthVideo.App.Localization;
 using DepthVideo.App.ViewModels;
 using Microsoft.Win32;
 
@@ -19,8 +20,8 @@ public partial class MainWindow : Window
     {
         var dialog = new OpenFileDialog
         {
-            Title = "选择视频",
-            Filter = "视频文件|*.mp4;*.mov;*.m4v;*.mkv;*.avi;*.webm|所有文件|*.*",
+            Title = LocalizationService.Text("SelectVideoDialog"),
+            Filter = LocalizationService.Text("VideoFilesFilter"),
         };
         if (dialog.ShowDialog(this) == true) await _viewModel.LoadVideoAsync(dialog.FileName);
     }
@@ -29,12 +30,12 @@ public partial class MainWindow : Window
     {
         var dialog = new SaveFileDialog
         {
-            Title = "选择输出位置",
-            Filter = "MP4 视频|*.mp4",
+            Title = LocalizationService.Text("SelectOutputDialog"),
+            Filter = LocalizationService.Text("Mp4Filter"),
             DefaultExt = ".mp4",
             AddExtension = true,
             FileName = string.IsNullOrWhiteSpace(_viewModel.OutputPath)
-                ? "黑白深度视频.mp4"
+                ? LocalizationService.Text("DefaultOutputName")
                 : System.IO.Path.GetFileName(_viewModel.OutputPath),
         };
         if (dialog.ShowDialog(this) == true) _viewModel.OutputPath = dialog.FileName;
