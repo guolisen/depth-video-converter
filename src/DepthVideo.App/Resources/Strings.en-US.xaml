@@ -68,7 +68,9 @@
     <system:String x:Key="Fine">High quality</system:String>
     <system:String x:Key="NearWhite">Near white, far black</system:String>
     <system:String x:Key="NearBlack">Near black, far white</system:String>
-    <system:String x:Key="AutoEncoder">Auto (prefer NVIDIA)</system:String>
-    <system:String x:Key="NvidiaEncoder">NVIDIA H.264</system:String>
-    <system:String x:Key="SoftwareEncoder">Software H.264</system:String>
+    <system:String x:Key="AutoEncoder">Auto (best available)</system:String>
+    <system:String x:Key="NvidiaEncoder">NVIDIA NVENC H.264</system:String>
+    <system:String x:Key="IntelEncoder">Intel Quick Sync H.264</system:String>
+    <system:String x:Key="AmdEncoder">AMD AMF H.264</system:String>
+    <system:String x:Key="SoftwareEncoder">CPU software H.264 (compatible)</system:String>
 </ResourceDictionary>

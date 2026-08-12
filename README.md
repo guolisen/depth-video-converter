@@ -6,10 +6,10 @@ Windows desktop application that converts regular videos into grayscale relative
 ## Current MVP
 
 - WPF desktop UI with drag and drop
-- NVIDIA GPU preference through ONNX Runtime DirectML
+- NVIDIA, AMD, and Intel GPU inference through ONNX Runtime DirectML
 - FP16 GPU model and Q8 CPU fallback model
 - FFmpeg streaming decode and encode
-- NVENC H.264 with software H.264 fallback
+- NVENC, Intel Quick Sync, and AMD AMF H.264 with software fallback
 - Original audio transcoded to AAC
 - Progress, remaining time, logs, and cancellation
 - Near-white/far-black and inverted output
@@ -39,7 +39,7 @@ The output is written to `artifacts\win-x64`. The publish script copies the FFmp
 
 ```text
 FFmpeg RGB frames -> ONNX depth inference -> temporal range stabilization
--> grayscale frames -> FFmpeg NVENC/libx264 -> MP4 with AAC audio
+-> grayscale frames -> FFmpeg hardware H.264/libx264 -> MP4 with AAC audio
 ```
 
 Depth Anything V2 produces relative depth rather than calibrated metric distance.

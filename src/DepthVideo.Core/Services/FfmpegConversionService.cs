@@ -53,7 +53,7 @@ public sealed class FfmpegConversionService
 
                 if (encoder is null)
                 {
-                    var encoderName = await ResolveEncoderAsync(settings.Encoder, cancellationToken);
+                    var encoderName = await ResolveEncoderAsync(settings.Encoder, settings.Device, log, cancellationToken);
                     encoder = StartEncoder(settings.InputPath, partialPath, prediction.Width, prediction.Height, metadata, encoderName);
                     encoderErrorTask = DrainErrorAsync(encoder, log, cancellationToken);
                     log?.Invoke($"视频编码器：{encoderName}；输出：{metadata.Width}×{metadata.Height}");
@@ -127,34 +127,112 @@ public sealed class FfmpegConversionService
             "-f", "rawvideo", "-pix_fmt", "gray", "-video_size", $"{depthWidth}x{depthHeight}", "-framerate", fps, "-i", "pipe:0",
             "-i", inputPath, "-map", "0:v:0", "-map", "1:a?",
             "-vf", $"scale={metadata.Width}:{metadata.Height}:flags=lanczos,format=yuv420p", "-c:v", encoderName);
-        if (encoderName == "h264_nvenc")
+        switch (encoderName)
         {
-            AddArguments(info, "-preset", "p4", "-tune", "hq", "-rc", "vbr", "-cq", "19", "-b:v", "0");
-        }
-        else
-        {
-            AddArguments(info, "-preset", "medium", "-crf", "18");
+            case "h264_nvenc":
+                AddArguments(info, "-preset", "p4", "-tune", "hq", "-rc", "vbr", "-cq", "19", "-b:v", "0");
+                break;
+            case "h264_qsv":
+                AddArguments(info, "-preset", "medium", "-global_quality", "19");
+                break;
+            case "h264_amf":
+                AddArguments(info, "-quality", "quality", "-rc", "cqp", "-qp_i", "19", "-qp_p", "19");
+                break;
+            default:
+                AddArguments(info, "-preset", "medium", "-crf", "18");
+                break;
         }
         AddArguments(info, "-c:a", "aac", "-b:a", "192k", "-shortest", "-movflags", "+faststart", outputPath);
         return Process.Start(info) ?? throw new InvalidOperationException("无法启动 FFmpeg 编码器。");
     }
 
-    private async Task<string> ResolveEncoderAsync(VideoEncoder selected, CancellationToken cancellationToken)
+    private async Task<string> ResolveEncoderAsync(
+        VideoEncoder selected,
+        HardwareDevice device,
+        Action<string>? log,
+        CancellationToken cancellationToken)
     {
         if (selected == VideoEncoder.SoftwareH264) return "libx264";
+
+        var requestedEncoder = selected switch
+        {
+            VideoEncoder.NvidiaH264 => "h264_nvenc",
+            VideoEncoder.IntelH264 => "h264_qsv",
+            VideoEncoder.AmdH264 => "h264_amf",
+            _ => null,
+        };
+
         var info = CreateStartInfo();
         info.RedirectStandardOutput = true;
         AddArguments(info, "-hide_banner", "-encoders");
         using var process = Process.Start(info) ?? throw new InvalidOperationException("无法检查 FFmpeg 编码器。");
         var output = await process.StandardOutput.ReadToEndAsync(cancellationToken);
         await process.WaitForExitAsync(cancellationToken);
-        var hasNvenc = output.Contains("h264_nvenc", StringComparison.Ordinal);
-        if (selected == VideoEncoder.NvidiaH264 && !hasNvenc)
+
+        if (requestedEncoder is not null)
         {
-            throw new InvalidOperationException("当前 FFmpeg 不支持 NVIDIA NVENC 编码器。");
+            if (!HasEncoder(output, requestedEncoder) || !await CanUseEncoderAsync(requestedEncoder, cancellationToken))
+            {
+                throw new InvalidOperationException($"当前硬件或 FFmpeg 无法使用 {GetEncoderDisplayName(requestedEncoder)} 编码器。");
+            }
+            return requestedEncoder;
         }
-        return hasNvenc ? "h264_nvenc" : "libx264";
+
+        foreach (var candidate in GetAutoEncoderOrder(device.Name))
+        {
+            if (!HasEncoder(output, candidate)) continue;
+            if (await CanUseEncoderAsync(candidate, cancellationToken)) return candidate;
+            log?.Invoke($"{GetEncoderDisplayName(candidate)} 不可用，正在尝试其他编码器。");
+        }
+
+        if (!HasEncoder(output, "libx264"))
+        {
+            throw new InvalidOperationException("当前 FFmpeg 没有可用的 H.264 编码器。");
+        }
+        return "libx264";
     }
+
+    private async Task<bool> CanUseEncoderAsync(string encoderName, CancellationToken cancellationToken)
+    {
+        var info = CreateStartInfo();
+        AddArguments(info, "-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i",
+            "color=c=black:s=256x144:r=1", "-frames:v", "1", "-c:v", encoderName,
+            "-pix_fmt", "yuv420p", "-f", "null", "-");
+        using var process = Process.Start(info) ?? throw new InvalidOperationException("无法测试 FFmpeg 编码器。");
+        await process.WaitForExitAsync(cancellationToken);
+        return process.ExitCode == 0;
+    }
+
+    private static bool HasEncoder(string encoderList, string encoderName) =>
+        encoderList.Contains(encoderName, StringComparison.Ordinal);
+
+    private static IEnumerable<string> GetAutoEncoderOrder(string deviceName)
+    {
+        if (deviceName.Contains("Intel", StringComparison.OrdinalIgnoreCase)) yield return "h264_qsv";
+        if (deviceName.Contains("AMD", StringComparison.OrdinalIgnoreCase) ||
+            deviceName.Contains("Radeon", StringComparison.OrdinalIgnoreCase)) yield return "h264_amf";
+        if (deviceName.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase)) yield return "h264_nvenc";
+
+        foreach (var encoder in new[] { "h264_nvenc", "h264_qsv", "h264_amf" })
+        {
+            var matchesDevice = encoder switch
+            {
+                "h264_nvenc" => deviceName.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase),
+                "h264_qsv" => deviceName.Contains("Intel", StringComparison.OrdinalIgnoreCase),
+                _ => deviceName.Contains("AMD", StringComparison.OrdinalIgnoreCase) ||
+                     deviceName.Contains("Radeon", StringComparison.OrdinalIgnoreCase),
+            };
+            if (!matchesDevice) yield return encoder;
+        }
+    }
+
+    private static string GetEncoderDisplayName(string encoderName) => encoderName switch
+    {
+        "h264_nvenc" => "NVIDIA NVENC H.264",
+        "h264_qsv" => "Intel Quick Sync H.264",
+        "h264_amf" => "AMD AMF H.264",
+        _ => encoderName,
+    };
 
     private ProcessStartInfo CreateStartInfo() => new()
     {

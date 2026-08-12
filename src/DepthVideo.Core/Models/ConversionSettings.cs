@@ -17,6 +17,8 @@ public enum VideoEncoder
 {
     Auto,
     NvidiaH264,
+    IntelH264,
+    AmdH264,
     SoftwareH264,
 }
 

@@ -68,7 +68,9 @@
     <system:String x:Key="Fine">高质量</system:String>
     <system:String x:Key="NearWhite">近白远黑</system:String>
     <system:String x:Key="NearBlack">近黑远白</system:String>
-    <system:String x:Key="AutoEncoder">自动（优先 NVIDIA）</system:String>
-    <system:String x:Key="NvidiaEncoder">NVIDIA H.264</system:String>
-    <system:String x:Key="SoftwareEncoder">软件 H.264</system:String>
+    <system:String x:Key="AutoEncoder">自动（最佳可用）</system:String>
+    <system:String x:Key="NvidiaEncoder">NVIDIA NVENC H.264</system:String>
+    <system:String x:Key="IntelEncoder">Intel Quick Sync H.264</system:String>
+    <system:String x:Key="AmdEncoder">AMD AMF H.264</system:String>
+    <system:String x:Key="SoftwareEncoder">CPU 软件 H.264（兼容）</system:String>
 </ResourceDictionary>

@@ -17,9 +17,12 @@ public sealed class HardwareDetector
                 foreach (ManagementObject item in searcher.Get())
                 {
                     var name = item["Name"]?.ToString() ?? $"GPU {index}";
-                    var isNvidia = name.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase);
+                    var isGpu = name.Contains("NVIDIA", StringComparison.OrdinalIgnoreCase) ||
+                                name.Contains("AMD", StringComparison.OrdinalIgnoreCase) ||
+                                name.Contains("Radeon", StringComparison.OrdinalIgnoreCase) ||
+                                name.Contains("Intel", StringComparison.OrdinalIgnoreCase);
                     var detail = "DirectML";
-                    devices.Add(new HardwareDevice($"dml-{index}", name, ComputeBackend.DirectMl, index, isNvidia, detail));
+                    devices.Add(new HardwareDevice($"dml-{index}", name, ComputeBackend.DirectMl, index, isGpu, detail));
                     index++;
                 }
             }

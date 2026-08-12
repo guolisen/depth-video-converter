@@ -58,6 +58,8 @@ public sealed class MainViewModel : ObservableObject
         [
             new(VideoEncoder.Auto, () => LocalizationService.Text("AutoEncoder")),
             new(VideoEncoder.NvidiaH264, () => LocalizationService.Text("NvidiaEncoder")),
+            new(VideoEncoder.IntelH264, () => LocalizationService.Text("IntelEncoder")),
+            new(VideoEncoder.AmdH264, () => LocalizationService.Text("AmdEncoder")),
             new(VideoEncoder.SoftwareH264, () => LocalizationService.Text("SoftwareEncoder")),
         ];
     }

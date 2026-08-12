@@ -16,6 +16,8 @@ public sealed class EnumDisplayConverter : IValueConverter
         DepthPolarity.NearBlack => LocalizationService.Text("NearBlack"),
         VideoEncoder.Auto => LocalizationService.Text("AutoEncoder"),
         VideoEncoder.NvidiaH264 => LocalizationService.Text("NvidiaEncoder"),
+        VideoEncoder.IntelH264 => LocalizationService.Text("IntelEncoder"),
+        VideoEncoder.AmdH264 => LocalizationService.Text("AmdEncoder"),
         VideoEncoder.SoftwareH264 => LocalizationService.Text("SoftwareEncoder"),
         HardwareDevice device when device.Backend == ComputeBackend.Cpu => LocalizationService.Text("CpuCompatibility"),
         HardwareDevice device when device.IsHighPerformance => $"{device.Name}  {LocalizationService.Text("Recommended")}",
