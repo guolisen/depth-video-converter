@@ -165,7 +165,15 @@
             </Border>
         </Grid>
         <Border Grid.Row="2" Background="#E9EFEC" BorderBrush="{StaticResource LineBrush}" BorderThickness="0,1,0,0" Padding="28,11">
-            <TextBlock Text="Depth Anything V2 Small · ONNX Runtime DirectML · FFmpeg" Foreground="#66736E" FontSize="11"/>
+            <Grid>
+                <TextBlock Text="Depth Anything V2 Small · ONNX Runtime DirectML · FFmpeg" Foreground="#66736E" FontSize="11"/>
+                <TextBlock HorizontalAlignment="Right" Foreground="#66736E" FontSize="11">
+                    <Run Text="{DynamicResource AuthorLabel}"/>
+                    <Hyperlink NavigateUri="https://www.douyin.com/user/MS4wLjABAAAAs3WN0GXGUCIyAk12GXCb3P8-osMx3A28CNVDv7h8MZA"
+                               RequestNavigate="AuthorLink_RequestNavigate"
+                               Foreground="#176B52">TestCamera</Hyperlink>
+                </TextBlock>
+            </Grid>
         </Border>
     </Grid>
 </Window>

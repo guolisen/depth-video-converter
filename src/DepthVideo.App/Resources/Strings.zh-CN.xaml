@@ -4,6 +4,7 @@
     <system:String x:Key="AppTitle">深度视频转换器</system:String>
     <system:String x:Key="AppSubtitle">本地 AI 深度处理</system:String>
     <system:String x:Key="Language">语言</system:String>
+    <system:String x:Key="AuthorLabel">作者：</system:String>
     <system:String x:Key="InputVideo">输入视频</system:String>
     <system:String x:Key="DropOrChoose">拖入视频或点击选择</system:String>
     <system:String x:Key="LocalOnly">视频只在本机处理，不会上传</system:String>

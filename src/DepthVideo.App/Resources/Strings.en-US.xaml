@@ -4,6 +4,7 @@
     <system:String x:Key="AppTitle">Depth Video Converter</system:String>
     <system:String x:Key="AppSubtitle">Local AI depth processing</system:String>
     <system:String x:Key="Language">Language</system:String>
+    <system:String x:Key="AuthorLabel">Author: </system:String>
     <system:String x:Key="InputVideo">Input video</system:String>
     <system:String x:Key="DropOrChoose">Drop a video or click to choose</system:String>
     <system:String x:Key="LocalOnly">Your video stays on this computer</system:String>

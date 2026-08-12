@@ -1,4 +1,6 @@
+using System.Diagnostics;
 using System.Windows;
+using System.Windows.Navigation;
 using DepthVideo.App.Localization;
 using DepthVideo.App.ViewModels;
 using Microsoft.Win32;
@@ -44,6 +46,12 @@ public partial class MainWindow : Window
     private async void Start_Click(object sender, RoutedEventArgs e) => await _viewModel.StartAsync();
     private void Stop_Click(object sender, RoutedEventArgs e) => _viewModel.Cancel();
     private void OpenFolder_Click(object sender, RoutedEventArgs e) => _viewModel.OpenOutputFolder();
+
+    private void AuthorLink_RequestNavigate(object sender, RequestNavigateEventArgs e)
+    {
+        Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
+        e.Handled = true;
+    }
 
     private void Window_DragOver(object sender, DragEventArgs e)
     {
