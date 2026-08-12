@@ -26,6 +26,7 @@ public sealed class FfmpegConversionServiceTests
         {
             await CreateSampleAsync(ffmpeg, input);
             var metadata = await new FfprobeService(ffprobe).ProbeAsync(input);
+            Assert.Equal(2, metadata.EstimatedFrameCount);
             var device = new HardwareDetector().Detect().FirstOrDefault(candidate => candidate.IsHighPerformance)
                          ?? new HardwareDevice("cpu", "CPU", ComputeBackend.Cpu, 0, false, "test");
             var settings = new ConversionSettings(
@@ -96,6 +97,50 @@ public sealed class FfmpegConversionServiceTests
             }
             Assert.True(await readTask > 0);
             if (!process.HasExited) process.Kill(true);
+        }
+        finally
+        {
+            if (Directory.Exists(testDirectory)) Directory.Delete(testDirectory, true);
+        }
+    }
+
+    [Fact]
+    public async Task ProbeUsesPlaybackFrameRateForSparseTimestampVideo()
+    {
+        var ffmpeg = ExecutableLocator.Find("ffmpeg");
+        var ffprobe = ExecutableLocator.Find("ffprobe");
+        if (ffmpeg is null || ffprobe is null) return;
+
+        var testDirectory = Path.Combine(Path.GetTempPath(), $"depth-rate-test-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(testDirectory);
+        var input = Path.Combine(testDirectory, "sparse.mp4");
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = ffmpeg,
+                UseShellExecute = false,
+                RedirectStandardError = true,
+                CreateNoWindow = true,
+            };
+            foreach (var argument in new[]
+                     {
+                         "-hide_banner", "-loglevel", "error", "-y",
+                         "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=60:duration=2",
+                         "-vf", "select='lt(mod(n,5),2)'", "-fps_mode", "vfr", "-c:v", "libx264", input,
+                     })
+            {
+                startInfo.ArgumentList.Add(argument);
+            }
+            using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("Could not start FFmpeg.");
+            var errorTask = process.StandardError.ReadToEndAsync();
+            await process.WaitForExitAsync();
+            var error = await errorTask;
+            if (process.ExitCode != 0) throw new InvalidOperationException(error);
+
+            var metadata = await new FfprobeService(ffprobe).ProbeAsync(input);
+            Assert.Equal(60, metadata.FramesPerSecond, 3);
+            Assert.InRange(metadata.EstimatedFrameCount, 117, 120);
         }
         finally
         {

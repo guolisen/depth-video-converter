@@ -46,12 +46,13 @@ public sealed class FfprobeService
             throw new InvalidOperationException("文件中没有可读取的视频轨道。");
         }
 
-        var fpsText = video.TryGetProperty("avg_frame_rate", out var averageRate)
-            ? averageRate.GetString()
-            : video.GetProperty("r_frame_rate").GetString();
-        var fps = ParseRate(fpsText);
+        var nominalFps = ParseRate(video.TryGetProperty("r_frame_rate", out var nominalRate) ? nominalRate.GetString() : null);
+        var averageFps = ParseRate(video.TryGetProperty("avg_frame_rate", out var averageRate) ? averageRate.GetString() : null);
+        var fps = nominalFps > 0 ? nominalFps : averageFps;
         var format = root.GetProperty("format");
-        var duration = ParseDouble(format.TryGetProperty("duration", out var durationValue) ? durationValue.GetString() : null);
+        var formatDuration = ParseDouble(format.TryGetProperty("duration", out var durationValue) ? durationValue.GetString() : null);
+        var videoDuration = ParseDouble(video.TryGetProperty("duration", out var videoDurationValue) ? videoDurationValue.GetString() : null);
+        var duration = videoDuration > 0 ? videoDuration : formatDuration;
         var fileSize = long.TryParse(format.TryGetProperty("size", out var sizeValue) ? sizeValue.GetString() : null, out var parsedSize)
             ? parsedSize
             : new FileInfo(filePath).Length;

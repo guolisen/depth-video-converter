@@ -32,7 +32,7 @@ public sealed class FfmpegConversionService
         using var estimator = new OnnxDepthEstimator(settings.ModelPath, settings.Device);
         var frameProcessor = new DepthFrameProcessor();
 
-        using var decoder = StartDecoder(settings.InputPath, inferenceWidth, inferenceHeight);
+        using var decoder = StartDecoder(settings.InputPath, inferenceWidth, inferenceHeight, metadata.FramesPerSecond);
         var decoderErrorTask = DrainErrorAsync(decoder, log, cancellationToken);
         Process? encoder = null;
         Task? encoderErrorTask = null;
@@ -61,6 +61,7 @@ public sealed class FfmpegConversionService
 
                 await encoder.StandardInput.BaseStream.WriteAsync(gray, cancellationToken);
                 processed++;
+                totalFrames = Math.Max(totalFrames, processed);
                 var elapsed = Math.Max(stopwatch.Elapsed.TotalSeconds, 0.001);
                 var speed = processed / elapsed;
                 TimeSpan? remaining = speed > 0
@@ -108,11 +109,12 @@ public sealed class FfmpegConversionService
         }
     }
 
-    private Process StartDecoder(string inputPath, int width, int height)
+    private Process StartDecoder(string inputPath, int width, int height, double framesPerSecond)
     {
         var info = CreateStartInfo();
         AddArguments(info, "-hide_banner", "-nostdin", "-loglevel", "warning", "-i", inputPath, "-map", "0:v:0", "-an",
-            "-vf", $"scale={width}:{height}:flags=lanczos", "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1");
+            "-vf", $"scale={width}:{height}:flags=lanczos", "-r", framesPerSecond.ToString("0.########", CultureInfo.InvariantCulture),
+            "-fps_mode", "cfr", "-pix_fmt", "rgb24", "-f", "rawvideo", "pipe:1");
         info.RedirectStandardOutput = true;
         return Process.Start(info) ?? throw new InvalidOperationException("无法启动 FFmpeg 解码器。");
     }
