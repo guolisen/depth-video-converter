@@ -1,6 +1,7 @@
 # Depth Video Converter
 
 Windows desktop application that converts regular videos into grayscale relative-depth videos locally.
+一款 Windows 桌面应用程序，可在本地将普通视频转换为灰度相对深度视频。
 
 ## Current MVP
 
