@@ -68,6 +68,36 @@ public sealed class FfprobeService
             streams.Any(stream => stream.TryGetProperty("codec_type", out var type) && type.GetString() == "audio"));
     }
 
+    public async Task<ImageMetadata> ProbeImageAsync(string filePath, CancellationToken cancellationToken = default)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = _ffprobePath,
+            UseShellExecute = false,
+            RedirectStandardOutput = true,
+            RedirectStandardError = true,
+            CreateNoWindow = true,
+        };
+        foreach (var argument in new[] { "-v", "error", "-select_streams", "v:0", "-show_streams", "-of", "json", filePath })
+        {
+            startInfo.ArgumentList.Add(argument);
+        }
+        using var process = Process.Start(startInfo) ?? throw new InvalidOperationException("无法启动 FFprobe。");
+        var outputTask = process.StandardOutput.ReadToEndAsync(cancellationToken);
+        var errorTask = process.StandardError.ReadToEndAsync(cancellationToken);
+        await process.WaitForExitAsync(cancellationToken);
+        var output = await outputTask;
+        var error = await errorTask;
+        if (process.ExitCode != 0) throw new InvalidOperationException(string.IsNullOrWhiteSpace(error) ? "无法读取图片信息。" : error.Trim());
+
+        using var document = JsonDocument.Parse(output);
+        var stream = document.RootElement.GetProperty("streams").EnumerateArray().FirstOrDefault();
+        if (stream.ValueKind == JsonValueKind.Undefined) throw new InvalidOperationException("文件中没有可读取的图片。");
+        return new ImageMetadata(filePath, stream.GetProperty("width").GetInt32(), stream.GetProperty("height").GetInt32(),
+            new FileInfo(filePath).Length,
+            stream.TryGetProperty("codec_name", out var codec) ? codec.GetString() ?? "unknown" : "unknown");
+    }
+
     private static double ParseRate(string? value)
     {
         if (string.IsNullOrWhiteSpace(value)) return 0;

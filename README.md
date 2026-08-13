@@ -1,11 +1,12 @@
 # Depth Video Converter
 
-Windows desktop application that converts regular videos into grayscale relative-depth videos locally.
-一款 Windows 桌面应用程序，可在本地将普通视频转换为灰度相对深度视频。
+Windows desktop application that converts images and videos into grayscale relative-depth media locally.
+一款 Windows 桌面应用程序，可在本地将普通图片和视频转换为灰度相对深度图。
 
 ## Current MVP
 
 - WPF desktop UI with drag and drop
+- Image conversion for JPG, PNG, WebP, BMP, and TIFF
 - NVIDIA, AMD, and Intel GPU inference through ONNX Runtime DirectML
 - FP16 GPU model and Q8 CPU fallback model
 - FFmpeg streaming decode and encode

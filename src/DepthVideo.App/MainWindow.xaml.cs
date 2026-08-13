@@ -22,10 +22,10 @@ public partial class MainWindow : Window
     {
         var dialog = new OpenFileDialog
         {
-            Title = LocalizationService.Text("SelectVideoDialog"),
-            Filter = LocalizationService.Text("VideoFilesFilter"),
+            Title = LocalizationService.Text("SelectMediaDialog"),
+            Filter = LocalizationService.Text("MediaFilesFilter"),
         };
-        if (dialog.ShowDialog(this) == true) await _viewModel.LoadVideoAsync(dialog.FileName);
+        if (dialog.ShowDialog(this) == true) await _viewModel.LoadFileAsync(dialog.FileName);
     }
 
     private void SelectOutput_Click(object sender, RoutedEventArgs e)
@@ -33,11 +33,11 @@ public partial class MainWindow : Window
         var dialog = new SaveFileDialog
         {
             Title = LocalizationService.Text("SelectOutputDialog"),
-            Filter = LocalizationService.Text("Mp4Filter"),
-            DefaultExt = ".mp4",
+            Filter = LocalizationService.Text(_viewModel.IsImage ? "ImageOutputFilter" : "Mp4Filter"),
+            DefaultExt = _viewModel.IsImage ? ".png" : ".mp4",
             AddExtension = true,
             FileName = string.IsNullOrWhiteSpace(_viewModel.OutputPath)
-                ? LocalizationService.Text("DefaultOutputName")
+                ? LocalizationService.Text(_viewModel.IsImage ? "DefaultImageOutputName" : "DefaultOutputName")
                 : System.IO.Path.GetFileName(_viewModel.OutputPath),
         };
         if (dialog.ShowDialog(this) == true) _viewModel.OutputPath = dialog.FileName;
@@ -63,7 +63,7 @@ public partial class MainWindow : Window
     {
         if (e.Data.GetData(DataFormats.FileDrop) is string[] files && files.Length > 0)
         {
-            await _viewModel.LoadVideoAsync(files[0]);
+            await _viewModel.LoadFileAsync(files[0]);
         }
     }
 }

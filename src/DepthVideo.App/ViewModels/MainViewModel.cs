@@ -17,6 +17,10 @@ public sealed class LocalizedOption<T>(T value, Func<string> displayNameFactory)
 
 public sealed class MainViewModel : ObservableObject
 {
+    private static readonly HashSet<string> ImageExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff",
+    };
     private readonly HardwareDetector _hardwareDetector = new();
     private readonly string? _ffmpegPath = ExecutableLocator.Find("ffmpeg");
     private readonly string? _ffprobePath = ExecutableLocator.Find("ffprobe");
@@ -24,6 +28,7 @@ public sealed class MainViewModel : ObservableObject
     private readonly string _cpuModelPath = Path.Combine(AppContext.BaseDirectory, "models", "depth_anything_v2_small_q8.onnx");
 
     private VideoMetadata? _video;
+    private ImageMetadata? _image;
     private HardwareDevice? _selectedDevice;
     private QualityPreset _selectedQuality = QualityPreset.Balanced;
     private DepthPolarity _selectedPolarity = DepthPolarity.NearWhite;
@@ -40,8 +45,8 @@ public sealed class MainViewModel : ObservableObject
     public MainViewModel()
     {
         _selectedLanguage = LanguageOptions.First(language => language.Code == LocalizationService.CurrentLanguage);
-        _statusTitle = LocalizationService.Text("ChooseVideoStatus");
-        _statusDetail = LocalizationService.Text("SupportedFormatsSentence");
+        _statusTitle = LocalizationService.Text("ChooseMediaStatus");
+        _statusDetail = LocalizationService.Text("SupportedMediaFormatsSentence");
 
         QualityOptions =
         [
@@ -91,20 +96,54 @@ public sealed class MainViewModel : ObservableObject
             if (SetProperty(ref _video, value))
             {
                 OnPropertyChanged(nameof(HasVideo));
+                OnPropertyChanged(nameof(HasInput));
+                OnPropertyChanged(nameof(IsVideo));
+                OnPropertyChanged(nameof(IsImage));
                 OnPropertyChanged(nameof(InputName));
                 OnPropertyChanged(nameof(InputDetails));
+                OnPropertyChanged(nameof(InputTypeLabel));
+                OnPropertyChanged(nameof(DropPrompt));
+                OnPropertyChanged(nameof(SupportedFormatsText));
                 OnPropertyChanged(nameof(CanStart));
             }
         }
     }
 
+    public ImageMetadata? Image
+    {
+        get => _image;
+        private set
+        {
+            if (SetProperty(ref _image, value))
+            {
+                OnPropertyChanged(nameof(HasInput));
+                OnPropertyChanged(nameof(IsVideo));
+                OnPropertyChanged(nameof(IsImage));
+                OnPropertyChanged(nameof(InputName));
+                OnPropertyChanged(nameof(InputDetails));
+                OnPropertyChanged(nameof(CanStart));
+                OnPropertyChanged(nameof(InputTypeLabel));
+                OnPropertyChanged(nameof(DropPrompt));
+                OnPropertyChanged(nameof(SupportedFormatsText));
+            }
+        }
+    }
+
     public bool HasVideo => Video is not null;
-    public string InputName => Video is null
+    public bool HasInput => Video is not null || Image is not null;
+    public bool IsVideo => Video is not null;
+    public bool IsImage => Image is not null;
+    public string InputTypeLabel => LocalizationService.Text(IsImage ? "InputImage" : "InputMedia");
+    public string DropPrompt => LocalizationService.Text("DropMedia");
+    public string SupportedFormatsText => LocalizationService.Text("SupportedMediaFormats");
+    public string InputName => !HasInput
         ? LocalizationService.Text("DropOrChoose")
-        : Path.GetFileName(Video.FilePath);
-    public string InputDetails => Video is null
+        : Path.GetFileName(Video?.FilePath ?? Image!.FilePath);
+    public string InputDetails => !HasInput
         ? LocalizationService.Text("LocalOnly")
-        : $"{Video.Width} × {Video.Height} · {Video.FramesPerSecond:0.###} FPS · {Video.Duration:hh\\:mm\\:ss} · {FormatBytes(Video.FileSize)}";
+        : Video is not null
+            ? $"{Video.Width} × {Video.Height} · {Video.FramesPerSecond:0.###} FPS · {Video.Duration:hh\\:mm\\:ss} · {FormatBytes(Video.FileSize)}"
+            : $"{Image!.Width} × {Image.Height} · {FormatBytes(Image.FileSize)} · {Image.Codec.ToUpperInvariant()}";
 
     public HardwareDevice? SelectedDevice
     {
@@ -152,7 +191,7 @@ public sealed class MainViewModel : ObservableObject
         }
     }
 
-    public bool CanStart => HasVideo && SelectedDevice is not null && !string.IsNullOrWhiteSpace(OutputPath) && !IsBusy;
+    public bool CanStart => HasInput && SelectedDevice is not null && !string.IsNullOrWhiteSpace(OutputPath) && !IsBusy;
 
     public Task InitializeAsync()
     {
@@ -172,7 +211,7 @@ public sealed class MainViewModel : ObservableObject
         return Task.CompletedTask;
     }
 
-    public async Task LoadVideoAsync(string filePath)
+    public async Task LoadFileAsync(string filePath)
     {
         if (IsBusy) return;
         if (_ffprobePath is null)
@@ -183,27 +222,38 @@ public sealed class MainViewModel : ObservableObject
 
         try
         {
-            StatusTitle = LocalizationService.Text("ReadingVideo");
+            var isImage = ImageExtensions.Contains(Path.GetExtension(filePath));
+            StatusTitle = LocalizationService.Text(isImage ? "ReadingImage" : "ReadingVideo");
             StatusDetail = Path.GetFileName(filePath);
-            Video = await new FfprobeService(_ffprobePath).ProbeAsync(filePath);
+            if (isImage)
+            {
+                Image = await new FfprobeService(_ffprobePath).ProbeImageAsync(filePath);
+                Video = null;
+            }
+            else
+            {
+                Video = await new FfprobeService(_ffprobePath).ProbeAsync(filePath);
+                Image = null;
+            }
             OutputPath = Path.Combine(
                 Path.GetDirectoryName(filePath) ?? Environment.CurrentDirectory,
-                $"{Path.GetFileNameWithoutExtension(filePath)}_{LocalizationService.Text("OutputSuffix")}.mp4");
+                $"{Path.GetFileNameWithoutExtension(filePath)}_{LocalizationService.Text("OutputSuffix")}{(isImage ? ".png" : ".mp4")}");
             ProgressValue = 0;
-            StatusTitle = LocalizationService.Text("VideoReady");
+            StatusTitle = LocalizationService.Text(isImage ? "ImageReady" : "VideoReady");
             StatusDetail = LocalizationService.Text("ConfirmSettings");
             AddLog(LocalizationService.Format("LoadedVideoLog", InputName, InputDetails));
         }
         catch (Exception exception)
         {
             Video = null;
+            Image = null;
             SetError(exception.Message);
         }
     }
 
     public async Task StartAsync()
     {
-        if (!CanStart || Video is null || SelectedDevice is null) return;
+        if (!CanStart || SelectedDevice is null) return;
         if (_ffmpegPath is null)
         {
             SetError(LocalizationService.Text("FfmpegMissing"));
@@ -224,11 +274,20 @@ public sealed class MainViewModel : ObservableObject
         AddLog(LocalizationService.Text("ConversionStartedLog"));
         try
         {
-            var settings = new ConversionSettings(
-                Video.FilePath, OutputPath, modelPath, SelectedDevice,
-                SelectedQuality, SelectedPolarity, SelectedEncoder);
-            var converter = new FfmpegConversionService(_ffmpegPath);
-            await converter.ConvertAsync(Video, settings, new Progress<ConversionProgress>(UpdateProgress), AddLog, _cancellation.Token);
+            if (Image is not null)
+            {
+                var settings = new ImageConversionSettings(Image.FilePath, OutputPath, modelPath, SelectedDevice,
+                    SelectedQuality, SelectedPolarity);
+                await new FfmpegImageConversionService(_ffmpegPath).ConvertAsync(Image, settings,
+                    new Progress<ConversionProgress>(UpdateProgress), AddLog, _cancellation.Token);
+            }
+            else if (Video is not null)
+            {
+                var settings = new ConversionSettings(Video.FilePath, OutputPath, modelPath, SelectedDevice,
+                    SelectedQuality, SelectedPolarity, SelectedEncoder);
+                await new FfmpegConversionService(_ffmpegPath).ConvertAsync(Video, settings,
+                    new Progress<ConversionProgress>(UpdateProgress), AddLog, _cancellation.Token);
+            }
             StatusTitle = LocalizationService.Text("ConversionComplete");
             StatusDetail = Path.GetFileName(OutputPath);
             SpeedText = LocalizationService.Text("FileSaved");
@@ -270,18 +329,19 @@ public sealed class MainViewModel : ObservableObject
         StatusTitle = progress.Stage switch
         {
             ConversionStage.LoadingModel => LocalizationService.Text("LoadingModel"),
-            ConversionStage.Decoding or ConversionStage.Inferring or ConversionStage.Encoding =>
-                LocalizationService.Format("GeneratingDepthFrames", progress.ProcessedFrames, progress.TotalFrames),
-            ConversionStage.Finalizing => LocalizationService.Text("MergingAudio"),
+            ConversionStage.Decoding or ConversionStage.Inferring or ConversionStage.Encoding => IsImage
+                ? LocalizationService.Text("GeneratingDepthImage")
+                : LocalizationService.Format("GeneratingDepthFrames", progress.ProcessedFrames, progress.TotalFrames),
+            ConversionStage.Finalizing => LocalizationService.Text(IsImage ? "SavingDepthImage" : "MergingAudio"),
             ConversionStage.Completed => LocalizationService.Text("ConversionComplete"),
             _ => LocalizationService.Text("ProcessingComplete"),
         };
         StatusDetail = progress.Stage switch
         {
             ConversionStage.LoadingModel => LocalizationService.Format("InitializingDevice", SelectedDevice?.Name ?? string.Empty),
-            ConversionStage.Finalizing => LocalizationService.Text("MergingAudio"),
+            ConversionStage.Finalizing => LocalizationService.Text(IsImage ? "SavingDepthImage" : "MergingAudio"),
             ConversionStage.Completed => LocalizationService.Text("ProcessingComplete"),
-            _ => LocalizationService.Format("FramesProgress", progress.ProcessedFrames, progress.TotalFrames),
+            _ => IsImage ? LocalizationService.Text("ImageProcessing") : LocalizationService.Format("FramesProgress", progress.ProcessedFrames, progress.TotalFrames),
         };
         SpeedText = progress.FramesPerSecond > 0
             ? LocalizationService.Format("SpeedRemaining", progress.FramesPerSecond, FormatRemaining(progress.Remaining))
@@ -292,6 +352,9 @@ public sealed class MainViewModel : ObservableObject
     {
         OnPropertyChanged(nameof(InputName));
         OnPropertyChanged(nameof(InputDetails));
+        OnPropertyChanged(nameof(InputTypeLabel));
+        OnPropertyChanged(nameof(DropPrompt));
+        OnPropertyChanged(nameof(SupportedFormatsText));
         OnPropertyChanged(nameof(DeviceStatus));
 
         foreach (var option in DeviceOptions) option.Refresh();
@@ -301,11 +364,11 @@ public sealed class MainViewModel : ObservableObject
 
         if (!IsBusy)
         {
-            StatusTitle = Video is null
-                ? LocalizationService.Text("ChooseVideoStatus")
-                : LocalizationService.Text("VideoReady");
-            StatusDetail = Video is null
-                ? LocalizationService.Text("SupportedFormatsSentence")
+            StatusTitle = !HasInput
+                ? LocalizationService.Text("ChooseMediaStatus")
+                : LocalizationService.Text(IsImage ? "ImageReady" : "VideoReady");
+            StatusDetail = !HasInput
+                ? LocalizationService.Text("SupportedMediaFormatsSentence")
                 : LocalizationService.Text("ConfirmSettings");
         }
     }
